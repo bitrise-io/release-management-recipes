@@ -9,7 +9,7 @@
 # RELEASE_NAME=THE_NAME_OF_THE_RELEASE_TO_BE_CREATED \
 # /bin/bash ./create_release.sh
 
-# Includes dependency installer utility.
+# Includes dependency installer and request handler utilities.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/utility/install_dependencies.sh"
 . "$SCRIPT_DIR/utility/request_handler.sh"
