@@ -12,7 +12,7 @@
 # CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_ARTIFACT_WILL_BE_UPLOADED_TO \
 # /bin/bash ./scripts/upload_installable_artifact.sh
 
-# Includes dependency installer utility.
+# Includes dependency installer and request handler utilities.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/utility/install_dependencies.sh"
 . "$SCRIPT_DIR/utility/request_handler.sh"
