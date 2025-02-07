@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Uploads an installable artifact to Bitrise using Release Management Public API.
-# Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Installable%20Artifacts%20-%20COMING%20SOON/GenerateInstallableArtifactUploadUrl
+# Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Installable%20Artifacts/GenerateInstallableArtifactUploadUrl
 #
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
 # For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
