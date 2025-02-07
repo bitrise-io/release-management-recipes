@@ -12,43 +12,30 @@
 # CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_ARTIFACT_WILL_BE_UPLOADED_TO \
 # /bin/bash ./scripts/upload_installable_artifact.sh
 
+# Includes dependency installer utility.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/utility/install_dependencies.sh"
+. "$SCRIPT_DIR/utility/request_handler.sh"
+
 #######################################
-# Checks for script dependencies. If the OS is not supported it exits. Missing dependencies (jq, openssl) are installed.
+# Checks for script dependencies. Missing dependencies (curl, jq, openssl) are installed.
 # Globals:
 #   None
 # Arguments:
 #   None
 #######################################
 check_dependencies() {
-  if [[ is_macOS -eq 1 ]] && [[ linux_distro -eq 1 ]]; then
-    echo "Unsupported OS. Exiting..."
-    exit 1
+  if [[ $(check_command_installed "curl") -eq 1 ]]; then
+    install_command "curl"
   fi
 
   if [[ $(check_command_installed "jq") -eq 1 ]]; then
-      install_command "jq"
+    install_command "jq"
   fi
 
   if [[ $(check_command_installed "openssl") -eq 1 ]]; then
-      install_command "openssl"
+    install_command "openssl"
   fi
-}
-
-#######################################
-# Checks Whether the given command is installed or not.
-# Globals:
-#   None
-# Arguments:
-#   The command to check for.
-# Outputs:
-#   Returns zero if the command is installed and 1 if not.
-#######################################
-check_command_installed() {
-    if command -v "$1" > /dev/null 2>&1; then
-        echo 0
-    else
-        echo 1
-    fi
 }
 
 #######################################
@@ -57,6 +44,7 @@ check_command_installed() {
 #   AUTHORIZATION_TOKEN
 #   ARTIFACT_PATH
 #   CONNECTED_APP_ID
+#   RM_API_HOST
 # Arguments:
 #   UUID for the artifact to be uploaded.
 # Outputs:
@@ -74,62 +62,6 @@ get_upload_information() {
   upload_info=$(curl -s -H "Authorization: $AUTHORIZATION_TOKEN" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes")
 
   echo "$upload_info"
-}
-
-#######################################
-# Installs a missing command to the machine.
-# Globals:
-#   None
-# Arguments:
-#   The command to be installed.
-#######################################
-install_command() {
-     if [[ is_macOS -eq 0 ]]; then
-         if command -v brew > /dev/null 2>&1; then
-             brew install "$1"
-         else
-             echo "Homebrew is not installed. Please install Homebrew first."
-             exit 1
-         fi
-     else
-        distro=$(linux_distro)
-        println "Detected Linux distribution: ${distro}.\n"
-
-        case "$distro" in
-          ubuntu|debian)
-            sudo apt update && sudo apt install -y "$1"
-            ;;
-          fedora)
-            sudo dnf install -y "$1"
-            ;;
-          centos|rhel)
-            sudo yum install -y "$1"
-            ;;
-          alpine)
-            sudo apk add --no-cache "$1"
-            ;;
-          arch)
-            sudo pacman -Sy "$1"
-            ;;
-      esac
-     fi
- }
-
-#######################################
-# Checks whether the script is running on MacOS or not.
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Returns zero if MacOS found, 1 otherwise.
-#######################################
-is_macOS() {
-  if [ "$(uname)" == "Darwin" ]; then
-    return 0
-  else
-    return 1
-  fi
 }
 
 #######################################
@@ -173,32 +105,6 @@ is_processed() {
 }
 
 #######################################
-# Checks the Linux distribution the script is running on.
-# Globals:
-#   None
-# Arguments:
-#   None
-# Outputs:
-#   Returns the id of the OS distribution and zero if a supported distribution is found. Returns 1 if not a Linux.
-#######################################
-linux_distro() {
-  if [ -f /etc/os-release ]; then
-    id=$(cat "/etc/os-release")
-    case "$id" in ubuntu|debian|fedora|centos|rhel|alpine|arch)
-      echo "$id"
-      return 0
-      ;;
-    *)
-      echo "Unsupported Linux distribution. Exiting..."
-      exit 1
-      ;;
-    esac
-  else
-    return 1
-  fi
-}
-
-#######################################
 # Processes the response of Google Cloud Storage when the upload request has been sent.
 # Globals:
 #   None
@@ -212,30 +118,9 @@ process_upload_response() {
   if [[ "$http_status_code" == 200 ]]; then
     is_processed "$2" 0
   else
-    response_body="${1:0:${#1}-3}"
-
     printf "upload http status: %s\n" "$http_status_code"
-    echo "$response_body"
+    echo "${1}" | jq .
   fi
-}
-
-#######################################
-# Checks for a request error coming from Release Management Public API.
-# Globals:
-#   None
-# Arguments:
-#   The response body.
-# Outputs:
-#   Returns the error if there is an error.
-request_error() {
-  error_code=$(echo "$1" | jq '.code' )
-  if [ "$error_code" == "null" ]; then
-    return
-  fi
-
-  echo "$1"
-
-  exit 0
 }
 
 #######################################
