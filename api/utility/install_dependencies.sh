@@ -27,13 +27,13 @@ check_command_installed() {
 #   The command to be installed.
 #######################################
 install_command() {
-  if [[ is_macOS -eq 1 ]] && [[ linux_distro -eq 1 ]]; then
+  if [[ $(is_macOS) -eq 1 ]] && [[ $(linux_distro) -eq 1 ]]; then
     echo "Unsupported OS. Cannot install missing dependencies. Exiting..."
     exit 1
   fi
 
 
-  if [[ is_macOS -eq 0 ]]; then
+  if [[ $(is_macOS) -eq 0 ]]; then
     if command -v brew > /dev/null 2>&1; then
       brew install "$1"
     else
@@ -42,7 +42,7 @@ install_command() {
     fi
   else
     distro=$(linux_distro)
-    println "Detected Linux distribution: ${distro}.\n"
+    printf "Detected Linux distribution: %s.\n" "$(distro)"
 
     case "$distro" in
       ubuntu|debian)
@@ -75,9 +75,9 @@ install_command() {
 #######################################
 is_macOS() {
   if [ "$(uname)" == "Darwin" ]; then
-    return 0
+    echo 0
   else
-    return 1
+    echo 1
   fi
 }
 
@@ -92,10 +92,9 @@ is_macOS() {
 #######################################
 linux_distro() {
   if [ -f /etc/os-release ]; then
-    id=$(cat "/etc/os-release")
+    id=$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
     case "$id" in ubuntu|debian|fedora|centos|rhel|alpine|arch)
       echo "$id"
-      return 0
       ;;
     *)
       echo "Unsupported Linux distribution. Exiting..."
@@ -103,6 +102,6 @@ linux_distro() {
       ;;
     esac
   else
-    return 1
+    echo 1
   fi
 }

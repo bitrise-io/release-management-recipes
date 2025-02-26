@@ -51,7 +51,7 @@ check_dependencies() {
 #   Returns the upload information including headers, method and url.
 #######################################
 get_upload_information() {
-  if [[ linux_distro -eq 1 ]]; then
+  if [[ $(linux_distro) -ne 1 ]]; then
     file_size_bytes=$(stat -c%s "$ARTIFACT_PATH")
   else
     file_size_bytes=$(stat -f%z "$ARTIFACT_PATH")
