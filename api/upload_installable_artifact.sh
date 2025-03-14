@@ -58,10 +58,12 @@ get_upload_information() {
   fi
 
   file_name=$(echo "\"$ARTIFACT_PATH\"" | jq -r 'split("/") | .[-1]')
+  response_body=$(mktemp)
+  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes")
+  upload_info=$(<"$response_body")
+  rm -f "$response_body"
 
-  upload_info=$(curl -s -H "Authorization: $AUTHORIZATION_TOKEN" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes")
-
-  echo "$upload_info"
+  makeFullResponse "$upload_info" "$http_code"
 }
 
 #######################################
@@ -83,9 +85,13 @@ is_processed() {
     exit 1
   fi
 
-  status_data=$(curl -s -H "Authorization: $AUTHORIZATION_TOKEN" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/status")
+  response_body=$(mktemp)
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/status")
+  status_data=$(<"$response_body")
+  rm -f "$response_body"
 
-  request_error "$status_data"
+  fullResponse=$(makeFullResponse "$status_data" "$http_code")
+  request_error "$fullResponse"
 
   status=$(echo "$status_data" | jq -r '.status')
   if [[ "$status" == "processed_valid" ]] || [[ "$status" == "processed_invalid" ]]; then
@@ -120,6 +126,7 @@ process_upload_response() {
   else
     printf "upload http status: %s\n" "$http_status_code"
     echo "${1}" | jq .
+    exit 1
   fi
 }
 
@@ -167,7 +174,8 @@ if [ -z "$RM_API_HOST" ]; then
   RM_API_HOST="https://api.bitrise.io"
 fi
 
-upload_info=$(get_upload_information "$installable_artifact_id")
-request_error "$upload_info"
+upload_info_full_resp=$(get_upload_information "$installable_artifact_id")
+request_error "$upload_info_full_resp" 'installable-artifacts/$1/upload-url'
+upload_info=$(getBodyFromFullResponse "$upload_info_full_resp")
 upload_response=$(upload_artifact "$upload_info")
 process_upload_response "$upload_response" "$installable_artifact_id"
