@@ -91,7 +91,7 @@ is_processed() {
   rm -f "$response_body"
 
   fullResponse=$(makeFullResponse "$status_data" "$http_code")
-  request_error "$fullResponse"
+  request_error "$fullResponse" "installable-artifacts/$1/status"
 
   status=$(echo "$status_data" | jq -r '.status')
   if [[ "$status" == "processed_valid" ]] || [[ "$status" == "processed_invalid" ]]; then
