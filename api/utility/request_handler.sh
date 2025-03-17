@@ -44,7 +44,7 @@ request_error() {
 #   A JSON object with the response body
 getBodyFromFullResponse() {
   local full_response=$1
-  echo "$full_response" | jq ".response_body"
+  echo "$full_response" | jq ".response_body  // empty"
 }
 
 #######################################
@@ -73,6 +73,11 @@ makeFullResponse() {
   local body=$1
   local http_code=$2
 
-  jq -n --argjson body "$body" --argjson http_code "$http_code" \
-    '{"http_code": $http_code, "response_body": $body}'
+  if [[ -z "$body" ]]; then
+    jq -n --argjson http_code "$http_code" \
+      '{"http_code": $http_code}'
+  else
+    jq -n --argjson body "$body" --argjson http_code "$http_code" \
+      '{"http_code": $http_code, "response_body": $body}'
+  fi
 }
