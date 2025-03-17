@@ -48,7 +48,7 @@ create_release() {
   release=$(<"$response_body")
   rm -f "$response_body"
 
-  makeFullResponse "$upload_info" "$http_code"
+  makeFullResponse "$http_code" "$upload_info"
 }
 
 #######################################
@@ -61,7 +61,7 @@ create_release() {
 #   Returns upload http status and response body from the upload request.
 process_create_release_response() {
   local http_status=$(getHttpStatusFromFullResponse "$1")
-  printf "upload http status: %s" "$http_status"
+  printf "upload http status: %s\n" "$http_status"
 
   local body=$(getBodyFromFullResponse "$1")
   if [[ -n "$body" ]]; then

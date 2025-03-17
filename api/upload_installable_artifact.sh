@@ -63,7 +63,7 @@ get_upload_information() {
   upload_info=$(<"$response_body")
   rm -f "$response_body"
 
-  makeFullResponse "$upload_info" "$http_code"
+  makeFullResponse "$http_code" "$upload_info"
 }
 
 #######################################
@@ -90,8 +90,8 @@ is_processed() {
   status_data=$(<"$response_body")
   rm -f "$response_body"
 
-  fullResponse=$(makeFullResponse "$status_data" "$http_code")
-  request_error "$fullResponse" "installable-artifacts/$1/status"
+  fullResponse=$(makeFullResponse "$http_code" "$status_data")
+  request_error "$fullResponse" "/installable-artifacts/$1/status"
 
   status=$(echo "$status_data" | jq -r '.status')
   if [[ "$status" == "processed_valid" ]] || [[ "$status" == "processed_invalid" ]]; then
@@ -175,7 +175,7 @@ if [ -z "$RM_API_HOST" ]; then
 fi
 
 upload_info_full_resp=$(get_upload_information "$installable_artifact_id")
-request_error "$upload_info_full_resp" 'installable-artifacts/$1/upload-url'
+request_error "$upload_info_full_resp" '/installable-artifacts/$1/upload-url'
 upload_info=$(getBodyFromFullResponse "$upload_info_full_resp")
 upload_response=$(upload_artifact "$upload_info")
 process_upload_response "$upload_response" "$installable_artifact_id"

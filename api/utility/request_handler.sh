@@ -65,13 +65,13 @@ getHttpStatusFromFullResponse() {
 # Globals:
 #   None
 # Arguments:
-#   The response body.
 #   The http code (int)
+#   The response body (string in json format) - optional
 # Outputs:
 #   A JSON object with format {"http_code": <int>, "response_body": <string>}
 makeFullResponse() {
-  local body=$1
-  local http_code=$2
+  local http_code=$1
+  local body=$2
 
   if [[ -z "$body" ]]; then
     jq -n --argjson http_code "$http_code" \
