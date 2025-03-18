@@ -42,9 +42,13 @@ check_dependencies() {
 #   Returns the created release.
 #######################################
 create_release() {
-  release=$(curl -s -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" "$RM_API_HOST/release-management/v1/releases" -d "{\"connected_app_id\": \"$CONNECTED_APP_ID\", \"name\": \"$RELEASE_NAME\"}")
+  
+  response_body=$(mktemp)
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" -o "$response_body" "$RM_API_HOST/release-management/v1/releases" -d "{\"connected_app_id\": \"$CONNECTED_APP_ID\", \"name\": \"$RELEASE_NAME\"}")
+  release=$(<"$response_body")
+  rm -f "$response_body"
 
-  echo "$release"
+  makeFullResponse "$http_code" "$upload_info"
 }
 
 #######################################
@@ -56,8 +60,14 @@ create_release() {
 # Outputs:
 #   Returns upload http status and response body from the upload request.
 process_create_release_response() {
-  printf "upload http status: %s\n" "${1:${#1}-3}"
-  echo "${1}" | jq .
+  local http_status=$(getHttpStatusFromFullResponse "$1")
+  printf "upload http status: %s\n" "$http_status"
+
+  local body=$(getBodyFromFullResponse "$1")
+  if [[ -n "$body" ]]; then
+    echo "${body}" | jq .
+  fi
+  
 }
 
 check_dependencies
@@ -66,6 +76,6 @@ if [ -z "$RM_API_HOST" ]; then
   RM_API_HOST="https://api.bitrise.io"
 fi
 
-release=$(create_release)
-request_error "$release"
-process_create_release_response "$release"
+release_full_resp=$(create_release)
+request_error "$release_full_resp" '/releases'
+process_create_release_response  "$release_full_resp"
