@@ -12,7 +12,14 @@
 # CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_PACKAGE_WILL_BE_UPLOADED_TO \
 # DEPLOYMENT_ID=DEPLOYMENT_ID_WITHIN_THE_CONNECTED_APP_THE_PACKAGE_WILL_BE_UPLOADED TO \
 # APP_VERSION=1.1.0
+# ROLLOUT=100
 # /bin/bash ./scripts/upload_code_push_package.sh
+
+if [ -z "${ROLLOUT}" ]; then
+    ROLLOUT_PERCENTAGE='100'
+else
+    ROLLOUT_PERCENTAGE=${ROLLOUT}
+fi
 
 # Includes dependency installer and request handler utilities.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,7 +68,7 @@ get_upload_information() {
 
   file_name=$(echo "\"$PACKAGE_PATH\"" | jq -r 'split("/") | .[-1]')
   response_body=$(mktemp)
-  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/code-push/deployments/$DEPLOYMENT_ID/packages/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes&app_version=$APP_VERSION")
+  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/code-push/deployments/$DEPLOYMENT_ID/packages/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes&app_version=$APP_VERSION&rollout=$ROLLOUT_PERCENTAGE")
   upload_info=$(<"$response_body")
   rm -f "$response_body"
 
