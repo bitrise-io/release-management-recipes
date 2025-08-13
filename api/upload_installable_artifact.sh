@@ -70,10 +70,12 @@ get_upload_information() {
   url="$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes"
 
   if [[ -n "$BRANCH" ]]; then
-    url+="&branch=$BRANCH"
+    encoded_branch=$(printf '%s' "$BRANCH" | jq -sRr @uri)
+    url+="&branch=$encoded_branch"
   fi
   if [[ -n "$WORKFLOW" ]]; then
-    url+="&workflow=$WORKFLOW"
+    encoded_workflow=$(printf '%s' "$WORKFLOW" | jq -sRr @uri)
+    url+="&workflow=$encoded_workflow"
   fi
 
   response_body=$(mktemp)
