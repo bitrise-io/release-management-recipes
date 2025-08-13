@@ -6,10 +6,16 @@
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
 # For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
 #
-# You need a couple of environment variables to set up and you can call this script from terminal:
+# You need a couple of environment variables to set up:
 # ARTIFACT_PATH=LOCAL_PATH_OF_THE_ARTIFACT_TO_BE_UPLOADED \
 # AUTHORIZATION_TOKEN=BITRISE_RM_API_ACCESS_TOKEN \
 # CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_ARTIFACT_WILL_BE_UPLOADED_TO \
+#
+# There are a couple of optional environment variables as well:
+# BRANCH=A_VERSION_CONTROL_BRANCH_THE_ARTIFACT_WAS_GENERATED_ON \
+# WORKFLOW=A_CI_WORKFLOW_THE_ARTIFACT_HAS_BEEN_GENERATED_WITH \
+#
+# You can call this script from terminal:
 # /bin/bash ./scripts/upload_installable_artifact.sh
 
 # Includes dependency installer and request handler utilities.
@@ -45,6 +51,8 @@ check_dependencies() {
 #   ARTIFACT_PATH
 #   CONNECTED_APP_ID
 #   RM_API_HOST
+#   BRANCH (optional)
+#   WORKFLOW (optional)
 # Arguments:
 #   UUID for the artifact to be uploaded.
 # Outputs:
@@ -58,8 +66,18 @@ get_upload_information() {
   fi
 
   file_name=$(echo "\"$ARTIFACT_PATH\"" | jq -r 'split("/") | .[-1]')
+
+  url="$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes"
+
+  if [[ -n "$BRANCH" ]]; then
+    url+="&branch=$BRANCH"
+  fi
+  if [[ -n "$WORKFLOW" ]]; then
+    url+="&workflow=$WORKFLOW"
+  fi
+
   response_body=$(mktemp)
-  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes")
+  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$url")
   upload_info=$(<"$response_body")
   rm -f "$response_body"
 
