@@ -1,201 +1,114 @@
-#!/bin/bash
-#
-# Uploads an installable artifact to Bitrise using Release Management Public API.
-# Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Installable%20Artifacts/GenerateInstallableArtifactUploadUrl
-#
-# This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
-# For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
-#
-# You need a couple of environment variables to set up:
-# ARTIFACT_PATH=LOCAL_PATH_OF_THE_ARTIFACT_TO_BE_UPLOADED \
-# AUTHORIZATION_TOKEN=BITRISE_RM_API_ACCESS_TOKEN \
-# CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_ARTIFACT_WILL_BE_UPLOADED_TO \
-#
-# There are a couple of optional environment variables as well:
-# BRANCH=A_VERSION_CONTROL_BRANCH_THE_ARTIFACT_WAS_GENERATED_ON \
-# WORKFLOW=A_CI_WORKFLOW_THE_ARTIFACT_HAS_BEEN_GENERATED_WITH \
-#
-# You can call this script from terminal:
-# /bin/bash ./scripts/upload_installable_artifact.sh
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:ffmpeg_kit_flutter/ffmpeg_kit.dart';
 
-# Includes dependency installer and request handler utilities.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-. "$SCRIPT_DIR/utility/install_dependencies.sh"
-. "$SCRIPT_DIR/utility/request_handler.sh"
+void main() => runApp(const VideoSleuthApp());
 
-#######################################
-# Checks for script dependencies. Missing dependencies (curl, jq, openssl) are installed.
-# Globals:
-#   None
-# Arguments:
-#   None
-#######################################
-check_dependencies() {
-  if [[ $(check_command_installed "curl") -eq 1 ]]; then
-    install_command "curl"
-  fi
+class VideoSleuthApp extends StatelessWidget {
+  const VideoSleuthApp({super.key});
 
-  if [[ $(check_command_installed "jq") -eq 1 ]]; then
-    install_command "jq"
-  fi
-
-  if [[ $(check_command_installed "openssl") -eq 1 ]]; then
-    install_command "openssl"
-  fi
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Video Sleuth',
+      theme: ThemeData(useMaterial3: true),
+      home: const Home(),
+    );
+  }
 }
 
-#######################################
-# Gets the information needed for uploading an installable artifact from Release Management Public API.
-# Globals:
-#   AUTHORIZATION_TOKEN
-#   ARTIFACT_PATH
-#   CONNECTED_APP_ID
-#   RM_API_HOST
-#   BRANCH (optional)
-#   WORKFLOW (optional)
-# Arguments:
-#   UUID for the artifact to be uploaded.
-# Outputs:
-#   Returns the upload information including headers, method and url.
-#######################################
-get_upload_information() {
-  if [[ $(linux_distro) -ne 1 ]]; then
-    file_size_bytes=$(stat -c%s "$ARTIFACT_PATH")
-  else
-    file_size_bytes=$(stat -f%z "$ARTIFACT_PATH")
-  fi
+class Home extends StatefulWidget {
+  const Home({super.key});
 
-  file_name=$(echo "\"$ARTIFACT_PATH\"" | jq -r 'split("/") | .[-1]')
-
-  url="$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes"
-
-  if [[ -n "$BRANCH" ]]; then
-    encoded_branch=$(printf '%s' "$BRANCH" | jq -sRr @uri)
-    url+="&branch=$encoded_branch"
-  fi
-  if [[ -n "$WORKFLOW" ]]; then
-    encoded_workflow=$(printf '%s' "$WORKFLOW" | jq -sRr @uri)
-    url+="&workflow=$encoded_workflow"
-  fi
-
-  response_body=$(mktemp)
-  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$url")
-  upload_info=$(<"$response_body")
-  rm -f "$response_body"
-
-  makeFullResponse "$http_code" "$upload_info"
+  @override
+  State<Home> createState() => _HomeState();
 }
 
-#######################################
-# Continuously checks whether the already uploaded artifact is processed by Release Management or not.
-# After successful processing, you can use the uploaded artifact in your releases and test distributions.
-# The function returns with a failure after a pre-defined retry count.
-# This is a recursive function calling itself four times after the first try.
-# Globals:
-#   AUTHORIZATION_TOKEN
-#   CONNECTED_APP_ID
-# Arguments:
-#   UUID for the artifact to be uploaded.
-#   Retry count.
-#######################################
-is_processed() {
-  if [[ $2 == 10 ]]; then
-    echo "The artifact is still not processed after $2 retries. Exiting..."
+class _HomeState extends State<Home> {
+  File? _video;
+  String _log = '';
+  List<FileSystemEntity> _outputs = [];
 
-    exit 1
-  fi
+  Future<void> pickVideo() async {
+    final res = await FilePicker.platform.pickFiles(type: FileType.video);
+    if (res == null || res.files.single.path == null) return;
+    setState(() {
+      _video = File(res.files.single.path!);
+      _log = '';
+      _outputs = [];
+    });
+  }
 
-  response_body=$(mktemp)
-  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/installable-artifacts/$1/status")
-  status_data=$(<"$response_body")
-  rm -f "$response_body"
+  Future<void> analyze() async {
+    final video = _video;
+    if (video == null) return;
 
-  fullResponse=$(makeFullResponse "$http_code" "$status_data")
-  request_error "$fullResponse" "/installable-artifacts/$1/status"
+    final dir = await getApplicationDocumentsDirectory();
+    final outDir = Directory('${dir.path}/sleuth_out');
+    if (await outDir.exists()) await outDir.delete(recursive: true);
+    await outDir.create(recursive: true);
 
-  status=$(echo "$status_data" | jq -r '.status')
-  if [[ "$status" == "processed_valid" ]] || [[ "$status" == "processed_invalid" ]]; then
-    echo "$status_data"
+    // 1) Sample frames (1 frame every 0.5 seconds = 2 fps)
+    // You can tune fps=2, fps=1, etc.
+    final framesPattern = '${outDir.path}/frame_%05d.jpg';
+    final cmdFrames =
+        '-y -i "${video.path}" -vf fps=2 -q:v 3 "$framesPattern"';
+    await FFmpegKit.execute(cmdFrames);
 
-    exit 0
-  elif [[ "$status" == "uploaded" ]] || [[ "$status" == "upload_requested" ]]; then
-    echo "$status_data"
+    // 2) Spectrogram image
+    final spectro = '${outDir.path}/spectrogram.png';
+    final cmdSpec =
+        '-y -i "${video.path}" -lavfi showspectrumpic=s=1024x256:legend=1 "$spectro"';
+    await FFmpegKit.execute(cmdSpec);
 
-    sleep 2
-    is_processed "$1" $2 + 1
-  else
-    echo "Unexpected status: $status. Exiting..."
+    // Refresh output list
+    final outputs = outDir.listSync();
+    setState(() {
+      _outputs = outputs;
+      _log = 'Done.\nFrames + spectrogram saved to:\n${outDir.path}';
+    });
+  }
 
-    exit 1
-  fi
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Video Sleuth 🕵️📼')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ElevatedButton(
+              onPressed: pickVideo,
+              child: const Text('Pick a video'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _video == null ? null : analyze,
+              child: const Text('Analyze'),
+            ),
+            const SizedBox(height: 16),
+            if (_video != null) Text('Video: ${_video!.path}'),
+            const SizedBox(height: 12),
+            Text(_log),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _outputs.length,
+                itemBuilder: (context, i) {
+                  final f = _outputs[i];
+                  return ListTile(
+                    title: Text(f.path.split('/').last),
+                    subtitle: Text(f.path),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
-
-#######################################
-# Processes the response of Google Cloud Storage when the upload request has been sent.
-# Globals:
-#   None
-# Arguments:
-#   The upload response.
-#   The artifact UUID used for uploading.
-# Outputs:
-#   Returns upload http status and response body from the upload request.
-process_upload_response() {
-  http_status_code="${1:${#1}-3}"
-  if [[ "$http_status_code" == 200 ]]; then
-    is_processed "$2" 0
-  else
-    printf "upload http status: %s\n" "$http_status_code"
-    echo "${1}" | jq .
-    exit 1
-  fi
-}
-
-#######################################
-# Uploads the installable artifact to Google Cloud Storage using the information given by Release Management Public API.
-# Globals:
-#   The artifact path which contains the file to be uploaded.
-# Arguments:
-#   The upload information given by Release Management Public API.
-# Outputs:
-#   Returns the response of Google Cloud Storage.
-upload_artifact() {
-  headers_json=$(echo "$1" | jq -r '.headers | to_entries | map("\(.value.name): \(.value.value)")')
-  method=$(echo "$1" | jq -r '.method')
-  url=$(echo "$1" | jq -r '.url')
-
-  # read headers into bash array from jq array
-  headers=()
-  while IFS= read -r line; do
-    headers+=($line)
-  done <<< "$headers_json"
-
-  # sanitize headers
-  for ((i = 0; i < ${#headers[@]}; i++)); do
-    headers[i]="${headers[i]//\"/}"
-    headers[i]="${headers[i]%,}"
-  done
-
-  # build curl command
-  curl_command="curl -sw \"%{http_code}\" -o - -X \"$method\""
-  for ((i = 1; i + 1 < ${#headers[@]}; i+=2)); do
-    curl_command+=" -H \"${headers[i]} ${headers[i+1]}\""
-  done
-  curl_command+=" --upload-file \"$ARTIFACT_PATH\" \"$url\""
-
-  eval "$curl_command"
-}
-
-check_dependencies
-
-uuid=$(openssl rand -hex 16)
-installable_artifact_id=${uuid:0:8}-${uuid:8:4}-${uuid:12:4}-${uuid:16:4}-${uuid:20:12}
-
-if [ -z "$RM_API_HOST" ]; then
-  RM_API_HOST="https://api.bitrise.io"
-fi
-
-upload_info_full_resp=$(get_upload_information "$installable_artifact_id")
-request_error "$upload_info_full_resp" '/installable-artifacts/$1/upload-url'
-upload_info=$(getBodyFromFullResponse "$upload_info_full_resp")
-upload_response=$(upload_artifact "$upload_info")
-process_upload_response "$upload_response" "$installable_artifact_id"
