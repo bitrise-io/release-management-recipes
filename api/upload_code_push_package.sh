@@ -1,16 +1,15 @@
 #!/bin/bash
 #
-# Uploads a CodePush package to Bitrise using Release Management Public API.
-# Reference: https://api.bitrise.io/release-management/api-docs/index.html#
+# Uploads a CodePush update to Bitrise using Release Management Public API.
+# Reference: https://api.bitrise.io/release-management/api-docs/index.html?urls.primaryName=RM%20CodePush%20API%20V2.1#/Updates/GetCodePushUpdateUploadUrl
 #
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
 # For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
 #
 # You need a couple of environment variables to set up and you can call this script from terminal:
-# PACKAGE_PATH=LOCAL_PATH_OF_THE_PACKAGE_TO_BE_UPLOADED \
+# UPDATE_PATH=LOCAL_PATH_OF_THE_UPDATE_TO_BE_UPLOADED \
 # AUTHORIZATION_TOKEN=BITRISE_RM_API_ACCESS_TOKEN \
-# CONNECTED_APP_ID=APP_ID_OF_THE_CONNECTED_APP_THE_PACKAGE_WILL_BE_UPLOADED_TO \
-# DEPLOYMENT_ID=DEPLOYMENT_ID_WITHIN_THE_CONNECTED_APP_THE_PACKAGE_WILL_BE_UPLOADED TO \
+# DEPLOYMENT_ID=DEPLOYMENT_ID_WITHIN_THE_CONNECTED_APP_THE_UPDATE_WILL_BE_UPLOADED TO \
 # APP_VERSION=1.1.0
 # ROLLOUT=100
 # IS_DISABLED=false
@@ -69,27 +68,26 @@ check_dependencies() {
 }
 
 #######################################
-# Gets the information needed for uploading an package from Release Management Public API.
+# Gets the information needed for uploading an update from Release Management Public API.
 # Globals:
 #   AUTHORIZATION_TOKEN
-#   PACKAGE_PATH
-#   CONNECTED_APP_ID
+#   UPDATE_PATH
 #   DEPLOYMENT_ID
 # Arguments:
-#   UUID for the package to be uploaded.
+#   UUID for the update to be uploaded.
 # Outputs:
 #   Returns the upload information including headers, method and url.
 #######################################
 get_upload_information() {
   if [[ $(linux_distro) -ne 1 ]]; then
-    file_size_bytes=$(stat -c%s "$PACKAGE_PATH")
+    file_size_bytes=$(stat -c%s "$UPDATE_PATH")
   else
-    file_size_bytes=$(stat -f%z "$PACKAGE_PATH")
+    file_size_bytes=$(stat -f%z "$UPDATE_PATH")
   fi
 
-  file_name=$(echo "\"$PACKAGE_PATH\"" | jq -r 'split("/") | .[-1]')
+  file_name=$(echo "\"$UPDATE_PATH\"" | jq -r 'split("/") | .[-1]')
   response_body=$(mktemp)
-  http_code=$(curl -X GET -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/code-push/deployments/$DEPLOYMENT_ID/packages/$1/upload-url?file_name=$file_name&file_size_bytes=$file_size_bytes&app_version=$APP_VERSION&description=$DESCRIPTION&rollout=$ROLLOUT_PERCENTAGE&disabled=$DISABLED&mandatory=$MANDATORY")
+  http_code=$(curl -X GET -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v2/code-push/v1/updates/$1/upload-url?deployment_id=$DEPLOYMENT_ID&file_name=$file_name&file_size_bytes=$file_size_bytes&app_version=$APP_VERSION&description=$DESCRIPTION&rollout=$ROLLOUT_PERCENTAGE&disabled=$DISABLED&mandatory=$MANDATORY")
   upload_info=$(<"$response_body")
   rm -f "$response_body"
 
@@ -103,26 +101,25 @@ get_upload_information() {
 # This is a recursive function calling itself four times after the first try.
 # Globals:
 #   AUTHORIZATION_TOKEN
-#   CONNECTED_APP_ID
 #   DEPLOYMENT_ID
 # Arguments:
-#   UUID for the package to be uploaded.
+#   UUID for the update to be uploaded.
 #   Retry count.
 #######################################
 is_processed() {
   if [[ $2 == 10 ]]; then
-    echo "The package is still not processed after $2 retries. Exiting..."
+    echo "The update is still not processed after $2 retries. Exiting..."
 
     exit 1
   fi
 
   response_body=$(mktemp)
-  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/code-push/deployments/$DEPLOYMENT_ID/packages/$1/status")
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v2/code-push/v1/updates/$1/status")
   status_data=$(<"$response_body")
   rm -f "$response_body"
 
   fullResponse=$(makeFullResponse "$http_code" "$status_data")
-  request_error "$fullResponse" "/installable-artifacts/$1/status"
+  request_error "$fullResponse" "/updates/$1/status"
 
   status=$(echo "$status_data" | jq -r '.status')
   if [[ "$status" == "processed_valid" ]] || [[ "$status" == "processed_invalid" ]]; then
@@ -133,7 +130,7 @@ is_processed() {
     echo "$status_data"
 
     sleep 2
-    is_processed "$1" $2 + 1
+    is_processed "$1" $(($2 + 1))
   else
     echo "Unexpected status: $status. Exiting..."
 
@@ -162,14 +159,14 @@ process_upload_response() {
 }
 
 #######################################
-# Uploads the package to Google Cloud Storage using the information given by Release Management Public API.
+# Uploads the update to Google Cloud Storage using the information given by Release Management Public API.
 # Globals:
-#   The package path which contains the file to be uploaded.
+#   The update path which contains the file to be uploaded.
 # Arguments:
 #   The upload information given by Release Management Public API.
 # Outputs:
 #   Returns the response of Google Cloud Storage.
-upload_package() {
+upload_update() {
   headers_json=$(echo "$1" | jq -r '.headers | to_entries | map("\(.value.name): \(.value.value)")')
   method=$(echo "$1" | jq -r '.method')
   url=$(echo "$1" | jq -r '.url')
@@ -191,7 +188,7 @@ upload_package() {
   for ((i = 1; i + 1 < ${#headers[@]}; i+=2)); do
     curl_command+=" -H \"${headers[i]} ${headers[i+1]}\""
   done
-  curl_command+=" --upload-file \"$PACKAGE_PATH\" \"$url\""
+  curl_command+=" --upload-file \"$UPDATE_PATH\" \"$url\""
 
   eval "$curl_command"
 }
@@ -199,14 +196,14 @@ upload_package() {
 check_dependencies
 
 uuid=$(openssl rand -hex 16)
-package_id=${uuid:0:8}-${uuid:8:4}-${uuid:12:4}-${uuid:16:4}-${uuid:20:12}
+update_id=${uuid:0:8}-${uuid:8:4}-${uuid:12:4}-${uuid:16:4}-${uuid:20:12}
 
 if [ -z "$RM_API_HOST" ]; then
   RM_API_HOST="https://api.bitrise.io"
 fi
 
-upload_info_full_resp=$(get_upload_information "$package_id")
-request_error "$upload_info_full_resp" '/code-push/deployments/$DEPLOYMENT_ID/packages/$1/upload-url'
+upload_info_full_resp=$(get_upload_information "$update_id")
+request_error "$upload_info_full_resp" '/code-push/updates/$1/upload-url'
 upload_info=$(getBodyFromFullResponse "$upload_info_full_resp")
-upload_response=$(upload_package "$upload_info")
-process_upload_response "$upload_response" "$package_id"
+upload_response=$(upload_update "$upload_info")
+process_upload_response "$upload_response" "$update_id"

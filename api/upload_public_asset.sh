@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Uploads an asset to Bitrise using Release Management Public API.
-# Reference: 
+# Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Public%20Assets/GeneratePublicAssetUploadUrl
 #
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
 # For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
@@ -67,7 +67,7 @@ get_upload_information() {
 
   file_name=$(echo "\"$ASSET_PATH\"" | jq -r 'split("/") | .[-1]')
   response_body=$(mktemp)
-  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/public-assets/$1/upload-url?asset_type=$TYPE&file_name=$file_name&file_size_bytes=$file_size_bytes")
+  http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v2/apps/v1/public-assets/$1/upload-url?app_id=$CONNECTED_APP_ID&asset_type=$TYPE&file_name=$file_name&file_size_bytes=$file_size_bytes")
   upload_info=$(<"$response_body")
   rm -f "$response_body"
 
@@ -81,7 +81,7 @@ get_upload_information() {
 # This is a recursive function calling itself four times after the first try.
 # Globals:
 #   AUTHORIZATION_TOKEN
-#   CONNECTED_APP_ID
+#   RM_API_HOST
 # Arguments:
 #   UUID for the asset to be uploaded.
 #   Retry count.
@@ -94,7 +94,7 @@ is_processed() {
   fi
 
   response_body=$(mktemp)
-  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v1/connected-apps/$CONNECTED_APP_ID/public-assets/$1/status")
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v2/apps/v1/public-assets/$1/status")
   status_data=$(<"$response_body")
   rm -f "$response_body"
 
@@ -110,7 +110,7 @@ is_processed() {
     echo "$status_data"
 
     sleep 2
-    is_processed "$1" $2 + 1
+    is_processed "$1" $(($2 + 1))
   else
     echo "Unexpected status: $status. Exiting..."
 
