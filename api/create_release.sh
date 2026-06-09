@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Creates a release under the given connected app.
-# Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Releases/CreateRelease
+# Reference: https://api.bitrise.io/release-management/api-docs/index.html?urls.primaryName=RM%20Store%20Releases%20API%20V2.1#/App%20Versions/CreateRelease
 #
 # You need a couple of environment variables to set up and you can call this script from the terminal:
 # AUTHORIZATION_TOKEN=BITRISE_RM_API_ACCESS_TOKEN \
@@ -44,7 +44,7 @@ check_dependencies() {
 create_release() {
   
   response_body=$(mktemp)
-  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" -o "$response_body" "$RM_API_HOST/release-management/v1/releases" -d "{\"connected_app_id\": \"$CONNECTED_APP_ID\", \"name\": \"$RELEASE_NAME\"}")
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" -o "$response_body" "$RM_API_HOST/release-management/v2/store-releases/v1/app-versions" -d "{\"app_id\": \"$CONNECTED_APP_ID\", \"name\": \"$RELEASE_NAME\"}")
   release=$(<"$response_body")
   rm -f "$response_body"
 
