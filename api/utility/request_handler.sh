@@ -81,3 +81,25 @@ makeFullResponse() {
       '{"http_code": $http_code, "response_body": $body}'
   fi
 }
+
+#######################################
+# Uploads a file to the pre-signed URL given by Release Management Public API.
+# Globals:
+#   None
+# Arguments:
+#   The upload information (JSON with method, url and headers).
+#   The path of the file to upload.
+# Outputs:
+#   Returns the response body followed by the http status code.
+upload_file() {
+  local method url header
+  method=$(echo "$1" | jq -r '.method')
+  url=$(echo "$1" | jq -r '.url')
+
+  local args=(-sw "%{http_code}" -o - -X "$method")
+  while IFS= read -r header; do
+    [[ -n "$header" ]] && args+=(-H "$header")
+  done <<< "$(echo "$1" | jq -r '.headers | to_entries[] | "\(.value.name): \(.value.value)"')"
+
+  curl "${args[@]}" --upload-file "$2" "$url"
+}

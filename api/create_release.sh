@@ -43,12 +43,13 @@ check_dependencies() {
 #######################################
 create_release() {
   
+  body=$(jq -n --arg app_id "$CONNECTED_APP_ID" --arg name "$RELEASE_NAME" '{app_id: $app_id, name: $name}')
   response_body=$(mktemp)
-  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" -o "$response_body" "$RM_API_HOST/release-management/v2/store-releases/v1/app-versions" -d "{\"app_id\": \"$CONNECTED_APP_ID\", \"name\": \"$RELEASE_NAME\"}")
+  http_code=$(curl -s -w "%{http_code}" -H "Authorization: $AUTHORIZATION_TOKEN" -H "Content-Type: application/json" -X "POST" -o "$response_body" "$RM_API_HOST/release-management/v2/store-releases/v1/app-versions" -d "$body")
   release=$(<"$response_body")
   rm -f "$response_body"
 
-  makeFullResponse "$http_code" "$upload_info"
+  makeFullResponse "$http_code" "$release"
 }
 
 #######################################
