@@ -4,7 +4,7 @@
 # Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Public%20Assets/GeneratePublicAssetUploadUrl
 #
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
-# For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
+# For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges so the script can install them.
 #
 # You need a couple of environment variables to set up and you can call this script from terminal:
 # ASSET_PATH=LOCAL_PATH_OF_THE_ASSET_TO_BE_UPLOADED \
@@ -65,7 +65,7 @@ get_upload_information() {
     file_size_bytes=$(stat -f%z "$ASSET_PATH")
   fi
 
-  file_name=$(echo "\"$ASSET_PATH\"" | jq -r 'split("/") | .[-1]')
+  file_name=$(printf '%s' "${ASSET_PATH##*/}" | jq -sRr @uri)
   response_body=$(mktemp)
   http_code=$(curl -w "%{http_code}" -s -H "Authorization: $AUTHORIZATION_TOKEN" -o "$response_body" "$RM_API_HOST/release-management/v2/apps/v1/public-assets/$1/upload-url?app_id=$CONNECTED_APP_ID&asset_type=$TYPE&file_name=$file_name&file_size_bytes=$file_size_bytes")
   upload_info=$(<"$response_body")
@@ -147,30 +147,7 @@ process_upload_response() {
 # Outputs:
 #   Returns the response of Google Cloud Storage.
 upload_asset() {
-  headers_json=$(echo "$1" | jq -r '.headers | to_entries | map("\(.value.name): \(.value.value)")')
-  method=$(echo "$1" | jq -r '.method')
-  url=$(echo "$1" | jq -r '.url')
-
-  # read headers into bash array from jq array
-  headers=()
-  while IFS= read -r line; do
-    headers+=($line)
-  done <<< "$headers_json"
-
-  # sanitize headers
-  for ((i = 0; i < ${#headers[@]}; i++)); do
-    headers[i]="${headers[i]//\"/}"
-    headers[i]="${headers[i]%,}"
-  done
-
-  # build curl command
-  curl_command="curl -sw \"%{http_code}\" -o - -X \"$method\""
-  for ((i = 1; i + 1 < ${#headers[@]}; i+=2)); do
-    curl_command+=" -H \"${headers[i]} ${headers[i+1]}\""
-  done
-  curl_command+=" --upload-file \"$ASSET_PATH\" \"$url\""
-
-  eval "$curl_command"
+  upload_file "$1" "$ASSET_PATH"
 }
 
 check_dependencies

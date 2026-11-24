@@ -4,7 +4,7 @@
 # Reference: https://api.bitrise.io/release-management/api-docs/index.html#/Installable%20Artifacts/GenerateInstallableArtifactUploadUrl
 #
 # This script supports Linux distributions (alpine, arch, centos, debian, fedora, rhel, ubuntu) and macOS.
-# For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges for the script.
+# For it to work properly you will need either jq and openssl packages installed on your system or sudo privileges so the script can install them.
 #
 # You need a couple of environment variables to set up:
 # ARTIFACT_PATH=LOCAL_PATH_OF_THE_ARTIFACT_TO_BE_UPLOADED \
@@ -65,7 +65,7 @@ get_upload_information() {
     file_size_bytes=$(stat -f%z "$ARTIFACT_PATH")
   fi
 
-  file_name=$(echo "\"$ARTIFACT_PATH\"" | jq -r 'split("/") | .[-1]')
+  file_name=$(printf '%s' "${ARTIFACT_PATH##*/}" | jq -sRr @uri)
 
   url="$RM_API_HOST/release-management/v2/apps/v1/installable-artifacts/$1/upload-url?app_id=$CONNECTED_APP_ID&file_name=$file_name&file_size_bytes=$file_size_bytes"
 
@@ -159,30 +159,7 @@ process_upload_response() {
 # Outputs:
 #   Returns the response of Google Cloud Storage.
 upload_artifact() {
-  headers_json=$(echo "$1" | jq -r '.headers | to_entries | map("\(.value.name): \(.value.value)")')
-  method=$(echo "$1" | jq -r '.method')
-  url=$(echo "$1" | jq -r '.url')
-
-  # read headers into bash array from jq array
-  headers=()
-  while IFS= read -r line; do
-    headers+=($line)
-  done <<< "$headers_json"
-
-  # sanitize headers
-  for ((i = 0; i < ${#headers[@]}; i++)); do
-    headers[i]="${headers[i]//\"/}"
-    headers[i]="${headers[i]%,}"
-  done
-
-  # build curl command
-  curl_command="curl -sw \"%{http_code}\" -o - -X \"$method\""
-  for ((i = 1; i + 1 < ${#headers[@]}; i+=2)); do
-    curl_command+=" -H \"${headers[i]} ${headers[i+1]}\""
-  done
-  curl_command+=" --upload-file \"$ARTIFACT_PATH\" \"$url\""
-
-  eval "$curl_command"
+  upload_file "$1" "$ARTIFACT_PATH"
 }
 
 check_dependencies

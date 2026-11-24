@@ -42,7 +42,7 @@ install_command() {
     fi
   else
     distro=$(linux_distro)
-    printf "Detected Linux distribution: %s.\n" "$(distro)"
+    printf "Detected Linux distribution: %s.\n" "$distro"
 
     case "$distro" in
       ubuntu|debian)
